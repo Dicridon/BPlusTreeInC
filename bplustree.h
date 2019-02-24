@@ -40,7 +40,10 @@ typedef struct bpt_node {
 typedef struct bpt {
     int level;
     bpt_node_t *root;
-    list_t *list;
+    // linked children
+    list_t *list;   
+    // key and data to be freed, so I may avoid accessing freed memory
+    char *free_key;
     unsigned long long nodes;
 } bpt_t;
 

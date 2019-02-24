@@ -3,6 +3,8 @@
   !!!! NOTE: I ALWAYS ASSUME THAT MALLOC/REALLOC/CALLOC WOULD NOT FAIL!!!!!!
   !!!!       THIS IS JUST FOR TEST
   !!!!!!!!!!!!!!
+
+
 */
 
 #include <string.h>
@@ -31,7 +33,7 @@ static bpt_node_t* bpt_check_redistribute(bpt_node_t *t);
 static int redistribute_leaf(bpt_node_t *t, char *key);
 static int redistribute_internal(char *split_key, bpt_node_t *parent,
                                  bpt_node_t *left, bpt_node_t *right);
-static int merge_leaves(bpt_node_t *leaf, char *key);
+static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key);
 static int merge(bpt_t *t, bpt_node_t *parent, char *key, char *split_key);
 static int bpt_remove_key_and_data(bpt_node_t *node, char *key);
 static int bpt_complex_delete(bpt_t *t, bpt_node_t *leaf, char *key);
@@ -606,7 +608,7 @@ static int bpt_simple_delete(bpt_node_t *leaf, char *key) {
 }
 
 // only used to merge leaves
-static int merge_leaves(bpt_node_t *leaf, char *key) {
+static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key) {
     bpt_node_t *parent = leaf->parent;
     unsigned long long i;
     unsigned long long idx_left;
@@ -617,7 +619,7 @@ static int merge_leaves(bpt_node_t *leaf, char *key) {
             break;
     }
 
-    free(leaf->keys[i]);
+    t->free_key = leaf->keys[i];
     free(leaf->data[i]);
     
     for (unsigned long long j = i; j <= leaf->num_of_keys - 1; j++) {
@@ -954,8 +956,11 @@ static int bpt_complex_delete(bpt_t *t, bpt_node_t *leaf, char *key) {
             }
     }
     // merge
-    merge_leaves(leaf, key);
-    return merge(t, parent, key, split_key);
+    merge_leaves(t, leaf, key);
+    merge(t, parent, key, split_key);
+    free(t->free_key);
+    t->free_key = NULL;
+    return 1;
 }
 
 int bpt_delete(bpt_t *t, char *key) {
