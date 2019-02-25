@@ -3,8 +3,6 @@
   !!!! NOTE: I ALWAYS ASSUME THAT MALLOC/REALLOC/CALLOC WOULD NOT FAIL!!!!!!
   !!!!       THIS IS JUST FOR TEST
   !!!!!!!!!!!!!!
-
-
 */
 
 #include <string.h>
@@ -30,14 +28,14 @@ static bpt_node_t *find_non_leaf(bpt_t *t, char *key);
 static bool bpt_is_root(bpt_node_t *t);
 static int bpt_insert_key(bpt_node_t *t, char *key);
 static bpt_node_t* bpt_check_redistribute(bpt_node_t *t);
-static int redistribute_leaf(bpt_node_t *t, char *key);
+static int redistribute_leaf(bpt_t *t, bpt_node_t *leaf, char *key);
 static int redistribute_internal(char *split_key, bpt_node_t *parent,
                                  bpt_node_t *left, bpt_node_t *right);
 static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key);
 static int merge(bpt_t *t, bpt_node_t *parent, char *key, char *split_key);
 static int bpt_remove_key_and_data(bpt_node_t *node, char *key);
 static int bpt_complex_delete(bpt_t *t, bpt_node_t *leaf, char *key);
-static int bpt_simple_delete(bpt_node_t *leaf, char *key);
+static int bpt_simple_delete(bpt_t *t, bpt_node_t *leaf, char *key);
 static void bpt_free_leaf(bpt_node_t *leaf);
 static void bpt_free_non_leaf(bpt_node_t *nleaf);
 
@@ -248,7 +246,7 @@ static int bpt_complex_insert(bpt_t *t, bpt_node_t *leaf, char *key,
             break;
     }
 
-    for (unsigned long long j = leaf->num_of_keys; j > i; j++) {
+    for (unsigned long long j = leaf->num_of_keys; j > i; j--) {
         leaf->keys[j] = leaf->keys[j - 1];
         leaf->data[j] = leaf->data[j - 1];
     }
@@ -346,15 +344,15 @@ int bpt_destroy(bpt_t *t) {
         for (unsigned long long i = 0;
              (*walk)->type == NON_LEAF && i < (*walk)->num_of_children; i++) {
             enqueue(queue, (*walk)->children[i]);
-            free((*walk));
         }
+
         if ((*walk)->type == LEAF) {
             for (unsigned long long i = 0; i < (*walk)->num_of_keys; i++) { 
                 free((*walk)->keys[i]);
                 free((*walk)->data[i]);
             }
-            free((*walk));
         }
+        free((*walk));
     }
     queue_destroy(queue);
     return 1;
@@ -444,6 +442,9 @@ void bpt_print(bpt_t * t) {
             enqueue(queue, (*walk)->children[i]);
         }
         printf("%p child of %p: \n",*(walk), (*walk)->parent);
+        if ((*walk)->type == NON_LEAF)
+            printf("non leaf: %llu children, %llu keys\n",
+                   (*walk)->num_of_children, (*walk)->num_of_keys);
         printf("keys: \n");
         for (unsigned long long i = 0; i < (*walk)->num_of_keys; i++) {
             printf("%s, ", (*walk)->keys[i]);
@@ -525,14 +526,20 @@ static bpt_node_t* bpt_check_redistribute(bpt_node_t *t) {
 
 
 // redistribute leaf nodes, not internal nodes
-static int redistribute_leaf(bpt_node_t *leaf, char *key) {
+static int redistribute_leaf(bpt_t *t, bpt_node_t *leaf, char *key) {
     bpt_node_t *parent = leaf->parent;
+    bpt_node_t *non_leaf = find_non_leaf(t, key);
     unsigned long long i = 0;
-    unsigned long long idx_leaf_key = 0;
+    unsigned long long idx_replace_key = 0;
+    char *replace_key = NULL;
 
-    for (idx_leaf_key = 0; idx_leaf_key < parent->num_of_keys; idx_leaf_key++)
-        if (strcmp(parent->keys[idx_leaf_key], key) == 0)
-            break;
+    if (non_leaf) {
+        for (idx_replace_key = 0;
+             idx_replace_key < non_leaf->num_of_keys; idx_replace_key++)
+        if (strcmp(non_leaf->keys[idx_replace_key], key) == 0)
+            break;            
+    }
+
     
     for (i = 0; i < parent->num_of_children; i++)
         if (parent->children[i] == leaf)
@@ -562,13 +569,12 @@ static int redistribute_leaf(bpt_node_t *leaf, char *key) {
                 left->data[tail] = NULL;
                 left->num_of_keys--;
             }
+            replace_key = leaf->keys[0];
             break;
         }
     }
     else if (right->num_of_keys > DEGREE / 2) {
         unsigned long long tail = leaf->num_of_keys - 1;
-        parent->keys[i] = right->keys[0];
-        
         for (i = 0; i < leaf->num_of_keys; i++) {
             if (strcmp(leaf->keys[i], key) == 0) {
                 free(leaf->keys[i]);
@@ -580,32 +586,48 @@ static int redistribute_leaf(bpt_node_t *leaf, char *key) {
                 leaf->keys[tail] = right->keys[0];
                 leaf->data[tail] = right->data[0];
 
-                for (i = 0; i < right->num_of_keys; i++) {
-                    right->keys[i] = right->keys[i+1];
-                    right->data[i] = right->data[i+1];
+                for (unsigned long long j = 0; j < right->num_of_keys; j++) {
+                    right->keys[j] = right->keys[j+1];
+                    right->data[j] = right->data[j+1];
                 }
+                parent->keys[i] = right->keys[0];
                 right->num_of_keys--;
             }
+            replace_key =  leaf->keys[0];
             break;
         }
     }
 
-    // if the key deleted reside in parent's keys, remove it
-    
-    for (unsigned long long j = idx_leaf_key; j < parent->num_of_keys; j++) {
-        parent->keys[j] = parent->keys[j+1];
-        parent->num_of_keys--;
-        break;
-    }
+    // if the key deleted reside in grandparent's keys, replace it
+    if (non_leaf)
+        non_leaf->keys[idx_replace_key] = replace_key;
 
-    
     return 1;
 }
 
-static int bpt_simple_delete(bpt_node_t *leaf, char *key) {
-    return bpt_remove_key_and_data(leaf, key);
-    
+static int bpt_simple_delete(bpt_t *t, bpt_node_t *leaf, char *key) {
+
+    if (!bpt_is_root(leaf)) {
+        // this branch will be executed only when deletin takes place on a
+        // right subtree of a key
+        bpt_node_t *non_leaf = find_non_leaf(t, key);
+        unsigned long long i = 0;
+        if (non_leaf) {
+            for (i = 0; i < non_leaf->num_of_keys; i++)
+                if (strcmp(non_leaf->keys[i], key) == 0) {
+                    break;
+                }
+        }
+        bpt_remove_key_and_data(leaf, key);
+        // replace the key
+        if (non_leaf)
+            non_leaf->keys[i] = leaf->keys[0];
+        return 1;
+    } else
+        return bpt_remove_key_and_data(leaf, key);
 }
+
+
 
 // only used to merge leaves
 static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key) {
@@ -649,8 +671,6 @@ static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key) {
         delete_position = idx_right;
         left = NULL;        
     }
-
-
 
     // merge
     if (left) {
@@ -721,8 +741,6 @@ static int redistribute_internal(char *split_key, bpt_node_t *node,
             break;
     }
 
-    split = (split == 0) ? 0 : split - 1;
-    
     for (i = 0; i < parent->num_of_children; i++) {
         if (parent->children[i] == node)
             break;
@@ -762,7 +780,7 @@ static int redistribute_internal(char *split_key, bpt_node_t *node,
         // borrow from right
         node->children[node->num_of_children++] = right->children[0];
         right->children[0]->parent = node;
-        node->keys[node->num_of_keys++] = split_key;
+ node->keys[node->num_of_keys++] = split_key;
         parent->keys[split] = right->keys[0];
         for (j = 0; j <= right->num_of_keys - 1; j++) {
             right->keys[j] = right->keys[j+1];
@@ -798,7 +816,7 @@ static int merge_internal(bpt_t *t, bpt_node_t *parent, char *split_key) {
     bpt_node_t *right = grandparent->children[idx_right];
     bool left_available = false;
     bool right_available = false;
-    unsigned long long delete_position = 0;
+    unsigned long long delete_position = i;
     if (i == 0 || left->num_of_keys > DEGREE / 2) {
         delete_position = idx_right;
         if (left->num_of_keys > DEGREE / 2)
@@ -845,9 +863,7 @@ static int merge_internal(bpt_t *t, bpt_node_t *parent, char *split_key) {
         
         bpt_free_non_leaf(parent);
         bpt_insert_key(left, split_key);
-    }
-
-    if (right) {
+    } else {
         for (i = 0; i < right->num_of_keys; i++) {
             parent->keys[i+parent->num_of_keys] = right->keys[i];
             right->keys[i] = NULL;
@@ -976,7 +992,7 @@ int bpt_delete(bpt_t *t, char *key) {
     
     bpt_node_t *parent = leaf->parent;
     if (leaf->num_of_keys > DEGREE / 2 || bpt_is_root(leaf)) {
-        bpt_simple_delete(leaf, key);
+        bpt_simple_delete(t, leaf, key);
 
         // tree is destroyed
         if (leaf->num_of_keys == 0) {
@@ -997,7 +1013,7 @@ int bpt_delete(bpt_t *t, char *key) {
         // if one of leaf's nearest siblings has enough keys to share
         // borrow a key from this sibling
         if (bpt_check_redistribute(leaf))
-            return redistribute_leaf(leaf, key);
+            return redistribute_leaf(t, leaf, key);
         else
             // no sibling can offer us a key
             // merge is required
