@@ -531,6 +531,7 @@ static int redistribute_leaf(bpt_t *t, bpt_node_t *leaf, char *key) {
     bpt_node_t *non_leaf = find_non_leaf(t, key);
     unsigned long long i = 0;
     unsigned long long idx_replace_key = 0;
+    unsigned long long idx_child = 0;
     char *replace_key = NULL;
 
     if (non_leaf) {
@@ -542,8 +543,11 @@ static int redistribute_leaf(bpt_t *t, bpt_node_t *leaf, char *key) {
 
     
     for (i = 0; i < parent->num_of_children; i++)
-        if (parent->children[i] == leaf)
-            break;
+        if (parent->children[i] == leaf){
+            idx_child = i;
+            break;            
+        }
+
 
     unsigned long long idx_left = (i == 0) ? 0 : i - 1;
     unsigned long long idx_right =
@@ -590,7 +594,7 @@ static int redistribute_leaf(bpt_t *t, bpt_node_t *leaf, char *key) {
                     right->keys[j] = right->keys[j+1];
                     right->data[j] = right->data[j+1];
                 }
-                parent->keys[i] = right->keys[0];
+                parent->keys[idx_child] = right->keys[0];
                 right->num_of_keys--;
             }
             replace_key =  leaf->keys[0];
@@ -662,12 +666,13 @@ static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key) {
     bpt_node_t *right = parent->children[idx_right];
     unsigned long long delete_position = 0;
 
-    // merge to right
+
     // merge left
     if (i == parent->num_of_children - 1 || right->num_of_keys > DEGREE / 2) {
         delete_position = i;
         right = NULL;
     } else {
+        // merge to right
         delete_position = idx_right;
         left = NULL;        
     }
@@ -834,13 +839,18 @@ static int merge_internal(bpt_t *t, bpt_node_t *parent, char *split_key) {
     // what sucks is that an internal node may have no proper sibling to merge in
     // so what should we do ?
     // we have to borrow a key from proper sibling just as what we do to leaves.
+    // and notice we have to change our split key
     if (!left && !right) {  // merge is impossible
-        if (left_available)
+        if (left_available) {
+            split_key = grandparent->keys[i-1];
             redistribute_internal(split_key, parent,
                                   grandparent->children[idx_left], NULL);
-        else
+        }
+        else {
+            split_key = grandparent->keys[i];
             redistribute_internal(split_key, parent, NULL,
                                   grandparent->children[idx_right]);
+        }
         return 1;
     }
 
@@ -920,12 +930,28 @@ static int merge(bpt_t *t, bpt_node_t *parent, char *key, char *split_key) {
         return 1;
     }
     // now we have to find a split key for parent
+
     bpt_node_t *grandparent = parent->parent;
+
     for (i = 0; i < grandparent->num_of_children; i++) {
         if (grandparent->children[i] == parent)
             break;
     }
-    unsigned long long split = (i == 0) ? 0 : i - 1;
+
+    unsigned long long idx_left = (i == 0) ? 0 : i - 1;
+    unsigned long long idx_right =
+        (i == grandparent->num_of_children - 1) ? i : i + 1;
+    unsigned long long split = i-1; // merge to left
+    bpt_node_t *left = grandparent->children[idx_left];
+    bpt_node_t *right = grandparent->children[idx_right];
+    if (i == 0 || left->num_of_keys > DEGREE / 2) {
+        split = i;
+    }
+
+    if (i == grandparent->num_of_children-1 || right->num_of_keys > DEGREE/2) {
+        split = i -1;
+    }
+
     split_key = grandparent->keys[split];
 
     // 1 means redistribution is done, no more recursion
@@ -980,6 +1006,8 @@ static int bpt_complex_delete(bpt_t *t, bpt_node_t *leaf, char *key) {
 }
 
 int bpt_delete(bpt_t *t, char *key) {
+    if (!t->root)
+        return 1;
     unsigned long long  i = 0; 
     bpt_node_t *leaf = find_leaf(t, key);
     for (i = 0; i < leaf->num_of_keys; i++) {
