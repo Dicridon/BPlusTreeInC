@@ -823,6 +823,7 @@ static int merge_internal(bpt_t *t, bpt_node_t *parent, char *split_key) {
     idx_right = (i == grandparent->num_of_children - 1) ? i : i + 1;
     bpt_node_t *left = grandparent->children[idx_left];
     bpt_node_t *right = grandparent->children[idx_right];
+    bpt_node_t *merged = NULL;
     bool left_available = false;
     bool right_available = false;
     unsigned long long delete_position = i;
@@ -877,7 +878,7 @@ static int merge_internal(bpt_t *t, bpt_node_t *parent, char *split_key) {
         
         bpt_free_non_leaf(parent);
         bpt_insert_key(left, split_key);
-        
+        merged = left;
     } else {
         for (i = 0; i < right->num_of_keys; i++) {
             parent->keys[i+parent->num_of_keys] = right->keys[i];
@@ -896,7 +897,15 @@ static int merge_internal(bpt_t *t, bpt_node_t *parent, char *split_key) {
 
         bpt_free_non_leaf(right);
         grandparent->children[idx_right] = parent;
-        bpt_insert_key(parent, split_key);            
+        bpt_insert_key(parent, split_key);
+        merged = parent;
+    }
+
+    if (bpt_is_root(grandparent) && grandparent->num_of_keys == 1) {
+        bpt_free_non_leaf(grandparent);
+        t->root = merged;
+        merged->parent = NULL;
+        return 1;
     }
 
     // align children
@@ -959,10 +968,10 @@ static int merge(bpt_t *t, bpt_node_t *parent, char *key, char *split_key) {
 
     split_key = grandparent->keys[split];
 
-    // 1 means redistribution is done, no more recursion
+    // 1 means everything is done, no more recursion
     if (merge_internal(t, parent, split_key) == 1)
         return 1;
-    merge(t, parent->parent, key, split_key);
+    merge(t, grandparent, key, split_key);
     return 1;
 }
 
