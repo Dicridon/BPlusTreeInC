@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 
-#define DEGREE (3)
+#define DEGREE (4)
 #define MIN_ENTRIES (DEGREE)
 
 enum bpt_node_type {

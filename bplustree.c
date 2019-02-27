@@ -104,8 +104,8 @@ static int bpt_simple_insert(bpt_node_t *leaf, char *key, char *value) {
         leaf->keys[j] = leaf->keys[j - 1];
         leaf->data[j] = leaf->data[j - 1];
     }
-    leaf->keys[i] = malloc(strlen(key));
-    leaf->data[i] = malloc(strlen(value));
+    leaf->keys[i] = malloc(strlen(key) + 1);
+    leaf->data[i] = malloc(strlen(value) + 1);
     strcpy(leaf->keys[i], key);
     strcpy(leaf->data[i], value);
     leaf->num_of_keys++; 
@@ -256,13 +256,13 @@ static int bpt_complex_insert(bpt_t *t, bpt_node_t *leaf, char *key,
 
     strcpy(leaf->keys[i], key);
     strcpy(leaf->data[i], value);
-
+    leaf->num_of_keys++;
+    
     // now split this leaf
     // copy the right half to new leaf (including [split])
     unsigned long long split = leaf->num_of_keys / 2;
 
-    // notice the <= sign here!! DO NOT forget the extra space
-    for (i = 0; i + split <= leaf->num_of_keys; i++) {
+    for (i = 0; i + split < leaf->num_of_keys; i++) {
         new_leaf->keys[i] = leaf->keys[i + split];
         new_leaf->data[i] = leaf->data[i + split];
         leaf->keys[i + split] = NULL;
@@ -668,7 +668,7 @@ static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key) {
 
 
     // merge left
-    if (i == parent->num_of_children - 1 || right->num_of_keys > DEGREE / 2) {
+    if (i != 0 && left->num_of_keys <= DEGREE / 2) {
         delete_position = i;
         right = NULL;
     } else {
