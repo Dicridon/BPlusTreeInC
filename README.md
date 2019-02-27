@@ -6,7 +6,7 @@ I found that it was quite hard to find detailed tutorials or instructions explai
 
 ## Properties of this B+ tree
 for any degree n:
-1. all non-leaf nodes except root have [n / 2 + 1, n] children. e.g. n = 3, non-leaf nodes should have at least 2 children and 1 key
+1. all non-leaf nodes except root have [1, n] children during insertion. e.g. n = 3, non-leaf nodes should have at least 2 children and 1 key
 2. the number of keys a node has always equals the the number of children the node has minus 1. (num\_of\_keys = num\_of\_children - 1 
 3. B+ tree is a sorted tree
 
