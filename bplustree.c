@@ -31,7 +31,7 @@ static bpt_node_t* bpt_check_redistribute(bpt_node_t *t);
 static int redistribute_leaf(bpt_t *t, bpt_node_t *leaf, char *key);
 static int redistribute_internal(char *split_key, bpt_node_t *parent,
                                  bpt_node_t *left, bpt_node_t *right);
-static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key);
+static bpt_node_t* merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key);
 static int merge(bpt_t *t, bpt_node_t *parent, char *key, char *split_key);
 static int bpt_remove_key_and_data(bpt_node_t *node, char *key);
 static int bpt_complex_delete(bpt_t *t, bpt_node_t *leaf, char *key);
@@ -572,9 +572,10 @@ static int redistribute_leaf(bpt_t *t, bpt_node_t *leaf, char *key) {
                 left->keys[tail] = NULL;
                 left->data[tail] = NULL;
                 left->num_of_keys--;
+                replace_key = leaf->keys[0];
+                break;
             }
-            replace_key = leaf->keys[0];
-            break;
+
         }
     }
     else if (right->num_of_keys > DEGREE / 2) {
@@ -596,9 +597,10 @@ static int redistribute_leaf(bpt_t *t, bpt_node_t *leaf, char *key) {
                 }
                 parent->keys[idx_child] = right->keys[0];
                 right->num_of_keys--;
+                replace_key =  leaf->keys[0];
+                break;
             }
-            replace_key =  leaf->keys[0];
-            break;
+
         }
     }
 
@@ -634,7 +636,7 @@ static int bpt_simple_delete(bpt_t *t, bpt_node_t *leaf, char *key) {
 
 
 // only used to merge leaves
-static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key) {
+static bpt_node_t* merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key) {
     bpt_node_t *parent = leaf->parent;
     unsigned long long i;
     unsigned long long idx_left;
@@ -665,8 +667,8 @@ static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key) {
     bpt_node_t *left = parent->children[idx_left];
     bpt_node_t *right = parent->children[idx_right];
     unsigned long long delete_position = 0;
-
-
+    bpt_node_t *rev;
+    
     // merge left
     if (i != 0 && left->num_of_keys <= DEGREE / 2) {
         delete_position = i;
@@ -690,6 +692,7 @@ static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key) {
         leaf->link.next->prev = leaf->link.prev;
         left->num_of_keys += leaf->num_of_keys;
         bpt_free_leaf(leaf);
+        rev = left;
     } else {
         // merge leaf into its right sibling
         // we merge right into leaf and modify the point in parent pointing
@@ -706,6 +709,7 @@ static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key) {
         parent->children[idx_right] = leaf;
         leaf->num_of_keys += right->num_of_keys;
         bpt_free_leaf(right);
+        rev = leaf;
     }
     
     // align children
@@ -713,7 +717,7 @@ static int merge_leaves(bpt_t *t, bpt_node_t *leaf, char *key) {
         parent->children[j] = parent->children[j+1];
     }
     parent->num_of_children--;
-    return 1;
+    return rev;
 }
 
 
@@ -873,6 +877,7 @@ static int merge_internal(bpt_t *t, bpt_node_t *parent, char *split_key) {
         
         bpt_free_non_leaf(parent);
         bpt_insert_key(left, split_key);
+        
     } else {
         for (i = 0; i < right->num_of_keys; i++) {
             parent->keys[i+parent->num_of_keys] = right->keys[i];
@@ -988,17 +993,21 @@ static int bpt_complex_delete(bpt_t *t, bpt_node_t *leaf, char *key) {
             break;
     }
     unsigned long long split = (i == 0) ? 0 : i - 1;
-    char *split_key = parent->keys[split];
+
+
+    // merge
+    bpt_node_t *merged = merge_leaves(t, leaf, key);
+    
     // replace the key
+    char *replace_key = merged->keys[0];
     if (non_leaf) {
         for (unsigned long long j = 0; j < non_leaf->num_of_keys; j++)
             if (strcmp(non_leaf->keys[j], key) == 0) {
-                non_leaf->keys[j] = split_key;
+                non_leaf->keys[j] = replace_key;
                 break;
             }
     }
-    // merge
-    merge_leaves(t, leaf, key);
+    char *split_key = parent->keys[split];
     merge(t, parent, key, split_key);
     free(t->free_key);
     t->free_key = NULL;
