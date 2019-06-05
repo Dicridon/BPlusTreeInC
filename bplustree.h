@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 
-#define DEGREE (128)
+#define DEGREE (5)
 #define MIN_ENTRIES (DEGREE)
 
 enum bpt_node_type {
@@ -47,15 +47,36 @@ typedef struct bpt {
     unsigned long long nodes;
 } bpt_t;
 
-bpt_t *bpt_new();
-int bpt_insert(bpt_t *t, char *key, char *value);
-int bpt_delete(bpt_t *t, char *key);
-int bpt_get(bpt_t *t, char *key, char *buffer);
-int bpt_range(bpt_t *t, char *start, char *end, char **buffer);
-int bpt_destroy(bpt_t *t);
-int bpt_serialize_f(bpt_t *t, char *file_name);
-int bpt_serialize_fp(bpt_t *t, FILE *fp);
-void bpt_print(bpt_t * t);
-void bpt_print_leaves(bpt_t *t);
+bpt_t
+*bpt_new();
 
+int
+bpt_insert(bpt_t *t, const char *key, const char *value);
+
+int
+bpt_delete(bpt_t *t, const char *key);
+
+int
+bpt_get(const bpt_t *t, const char *key, char *buffer);
+
+int
+bpt_range(const bpt_t *t, const char *start, const char *end, char **buffer);
+
+int
+bpt_destroy(bpt_t *t);
+
+int
+bpt_serialize_f(const bpt_t *t, const char *file_name);
+
+int
+bpt_serialize_fp(const bpt_t *t, const FILE *fp);
+
+void
+bpt_print(const bpt_t *t );
+
+void
+bpt_print_leaves(const bpt_t *t);
+
+int
+bpt_range_test(const bpt_t *t, const char *start, long n);
 #endif
